@@ -30,7 +30,7 @@ pipeline {
                         docker run --rm \
                         -v "${PWD}":/app \
                         -w /app \
-                        python:3.10-slim /bin/bash -c "pip install -r requirements.txt && python -m pytest test_calculator.py"
+                        python:3.10-slim /bin/bash -c "pip install -r requirements.txt && python -m pytest test_todo.py"
                     '''
                     
                     echo "Tests passed successfully in isolated Docker environment!"
