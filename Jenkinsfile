@@ -1,34 +1,32 @@
 // Jenkinsfile
-// Optimized Declarative Pipeline for Local Docker Desktop CI/CD.
-// This script assumes Jenkins and Docker Desktop are running on the same host
-// and the Jenkins user has permission to run 'docker' commands.
+// Revised Declarative Pipeline for Docker Hub Integration (Standard CI/CD)
 
 pipeline {
-    // Pipeline runs on any available Jenkins agent (your main host machine)
     agent any
 
-    // Define environment variables for clean configuration
+    // Define environment variables
     environment {
-        // Tag the image locally using the unique Jenkins BUILD_NUMBER
+        // !!! IMPORTANT: REPLACE 'YOUR_DOCKER_HUB_USER' with your actual Docker Hub username !!!
+        DOCKER_HUB_USER = 'IMT2023091'
         IMAGE_NAME = "ci-cd-demo"
+        // Generates a unique tag based on the Jenkins build number
         IMAGE_TAG = "${env.BUILD_NUMBER}" 
-        // Name for the running container instance
+        // Credential ID matching the one configured in Jenkins (Username/Password for Docker Hub)
+        DOCKER_CREDS_ID = 'docker-hub-creds'
         CONTAINER_NAME = "ci-cd-demo-app"
     }
 
     stages {
         stage('Pull Code') {
             steps {
-                // For a Pipeline job configured with SCM, the code is checked out automatically
-                sh 'echo "Code successfully pulled from GitHub: https://github.com/Shivam0Pandya/ci-cd-demo.git"'
+                sh 'echo "Code successfully pulled from GitHub."'
             }
         }
 
         stage('Test Code') {
             steps {
-                // Execute the unit tests using Python's built-in unittest framework.
-                // The pipeline will fail here if any tests in 'test_todo.py' fail.
                 sh 'echo "Running unit tests..."'
+                // Runs the tests using built-in unittest (from test_todo.py)
                 sh 'python test_todo.py'
                 sh 'echo "Tests passed successfully."'
             }
@@ -37,10 +35,11 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def fullImageName = "${IMAGE_NAME}:${IMAGE_TAG}"
-                    echo "Starting Docker image build for tag: ${fullImageName}"
+                    // Full tag includes the user name and version
+                    def fullImageName = "${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+                    echo "Building Docker image: ${fullImageName}"
                     
-                    // Build the Docker image using the Dockerfile in the current directory
+                    // Build the Docker image using the Dockerfile
                     sh "docker build -t ${fullImageName} ."
                     
                     echo "Docker image built successfully."
@@ -48,21 +47,47 @@ pipeline {
             }
         }
 
-        // The 'Push to Docker Hub' stage is omitted since we are deploying locally
-
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    def fullImageName = "${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+                    
+                    // Use 'withCredentials' to securely inject Docker Hub username and token
+                    withCredentials([usernamePassword(credentialsId: DOCKER_CREDS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                        
+                        echo "Logging into Docker Hub..."
+                        // Log in using the Docker Hub Access Token as the password
+                        sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
+                        
+                        echo "Pushing image tag ${IMAGE_TAG} to Docker Hub..."
+                        // Push the uniquely tagged image
+                        sh "docker push ${fullImageName}"
+                        
+                        echo "Tagging and pushing 'latest'..."
+                        // Tag and push 'latest' for easy reference
+                        sh "docker tag ${fullImageName} ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest"
+                        sh "docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest"
+                        
+                        echo "Image pushed successfully to Docker Hub."
+                    }
+                }
+            }
+        }
+        
         stage('Deploy Container') {
             steps {
                 script {
-                    def currentImage = "${IMAGE_NAME}:${IMAGE_TAG}"
-                    echo "Starting local deployment to Docker Desktop..."
+                    // Pull and run the 'latest' image we just pushed to the registry
+                    def latestImage = "${DOCKER_HUB_USER}/${IMAGE_NAME}:latest"
+                    echo "Deploying container by pulling from Docker Hub..."
                     sh """
-                        # 1. Stop and remove the old container instance (if it exists)
+                        # Pull the image we just pushed from the public registry
+                        docker pull ${latestImage}
+                        # Stop and remove the old container instance (|| true prevents script failure)
                         docker stop ${CONTAINER_NAME} || true
                         docker rm ${CONTAINER_NAME} || true
-                        
-                        # 2. Run the new container in detached mode (-d), mapping the exposed port 5000.
-                        docker run -d -p 5000:5000 --name ${CONTAINER_NAME} ${currentImage}
-                        
+                        # Run the new container, mapping the port
+                        docker run -d -p 5000:5000 --name ${CONTAINER_NAME} ${latestImage}
                         echo "Container ${CONTAINER_NAME} deployed and running on port 5000."
                     """
                 }
