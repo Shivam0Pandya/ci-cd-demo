@@ -4,25 +4,28 @@ pipeline {
 
     environment {
         // !! UPDATE THIS: Replace with your actual Docker Hub username and Roll Number !!
-        DOCKER_IMAGE = "imt2023091/ci-cd-demo`"
+        DOCKER_IMAGE = "imt2023091/ci-cd-demo"
+        // Ensure this ID matches the ID set in Jenkins Credentials
+        DOCKER_CREDS_ID = "docker-hub-creds" 
     }
 
     stages {
-        stage('Pull Code') {
+        stage('Login & Setup') {
             steps {
-                echo "--- Pulling code from GitHub..."
+                echo "--- Logging in to Docker Hub for rate limit protection..."
+                // Perform a secure login that lasts for the rest of the node's execution
+                withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USER')]) {
+                    sh "docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}"
+                }
             }
         }
-
+        
         stage('Test (Pytest in Docker)') {
             steps {
                 script {
                     echo "--- Running automated Pytest tests inside a Docker container..."
                     
-                    // The 'sh' command runs the tests inside a temporary 'python:3.9-slim' container.
-                    // -v "${PWD}":/app mounts the current Jenkins workspace into the container.
-                    // -w /app sets the working directory inside the container.
-                    // /bin/bash -c "..." chains the dependency installation and the test command.
+                    // This command will now execute as an authenticated user, avoiding the rate limit error!
                     sh '''
                         docker run --rm \
                         -v "${PWD}":/app \
@@ -38,27 +41,26 @@ pipeline {
         stage('Create Docker Image') {
             steps {
                 echo "--- Building final Docker image: ${env.DOCKER_IMAGE}:latest"
-                // This uses the Dockerfile in your workspace to build the final image
                 sh "docker build -t ${env.DOCKER_IMAGE}:latest ."
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                // Use the Jenkins credentials configured with ID 'docker-hub-credentials'
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USER')]) {
-                    echo "--- Logging in and pushing to Docker Hub..."
-                    
-                    // 1. Log in to Docker Hub
-                    sh "docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}"
-                    
-                    // 2. Push the image
-                    sh "docker push ${env.DOCKER_IMAGE}:latest"
-                    
-                    // 3. Log out for security
-                    sh "docker logout"
-                }
+                echo "--- Pushing to Docker Hub..."
+                // The image is already tagged with the full name, no need to retag.
+                // The login is already active from the 'Login & Setup' stage.
+                sh "docker push ${env.DOCKER_IMAGE}:latest"
             }
+        }
+    }
+    
+    post {
+        // Always try to log out, even if the pipeline fails
+        always {
+            echo "--- Ensuring Docker Hub logout for security..."
+            // It's safe to use a separate 'sh docker logout' if the original login succeeded
+            sh 'docker logout || true' // '|| true' ensures the pipeline doesn't fail on logout if it was never logged in
         }
     }
 }
