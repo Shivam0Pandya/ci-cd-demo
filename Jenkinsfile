@@ -4,7 +4,7 @@ pipeline {
 
     environment {
         // !! UPDATE THIS: Replace with your actual Docker Hub username and Roll Number !!
-        DOCKER_IMAGE = "parv1601/imt2023514-app"
+        DOCKER_IMAGE = "imt2023091/ci-cd-demo"
     }
 
     stages {
@@ -46,7 +46,7 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 // Use the Jenkins credentials configured with ID 'docker-hub-credentials'
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USER')]) {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USER')]) {
                     echo "--- Logging in and pushing to Docker Hub..."
                     
                     // 1. Log in to Docker Hub
