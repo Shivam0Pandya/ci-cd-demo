@@ -27,7 +27,7 @@ pipeline {
             steps {
                 sh 'echo "Running unit tests..."'
                 // Runs the tests using built-in unittest (from test_todo.py)
-                sh 'python test_todo.py'
+                sh 'python3 test_todo.py'
                 sh 'echo "Tests passed successfully."'
             }
         }
