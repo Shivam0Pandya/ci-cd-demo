@@ -4,7 +4,7 @@ pipeline {
 
     environment {
         // !! UPDATE THIS: Replace with your actual Docker Hub username and Roll Number !!
-        DOCKER_IMAGE = "imt2023091/ci-cd-demo"
+        DOCKER_IMAGE = "imt2023091/ci-cd-demo`"
     }
 
     stages {
