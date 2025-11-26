@@ -232,7 +232,83 @@ pipeline {
                         sh "docker logout"
                     }
                 }
+            }// Jenkinsfile
+// Scripted Pipeline Version - Implemented as a final fix for the persistent 'stages' method error.
+
+// Start of the main execution block, using the recognized 'node' step
+node {
+    
+    // 1. Define Environment Variables (using Groovy 'def' instead of the declarative 'environment' block)
+    def DOCKER_HUB_USER = 'IMT2023091'
+    def IMAGE_NAME = "ci-cd-demo"
+    // Use the build number environment variable available globally
+    def IMAGE_TAG = "${env.BUILD_NUMBER}" 
+    // Credential ID matching the one configured in Jenkins (Username/Token)
+    def DOCKER_CREDS_ID = 'docker-hub-creds'
+    def CONTAINER_NAME = "ci-cd-demo-app"
+
+    // 2. Stages start here (using recognized 'stage' step)
+    stage('Pull Code') {
+        // Use the 'echo' step directly inside the stage
+        echo "Code successfully pulled from GitHub."
+    }
+
+    stage('Test Code') {
+        echo "Running unit tests..."
+        // Use 'sh' step for shell commands
+        sh 'python3 test_todo.py'
+        echo "Tests passed successfully."
+    }
+
+    stage('Build and Push Image') {
+        // The 'script' block is kept here for organizing the complex logic
+        script {
+            def fullImageName = "${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+
+            // Securely log in to Docker Hub using stored credentials
+            withCredentials([usernamePassword(credentialsId: DOCKER_CREDS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                
+                echo "Logging into Docker Hub for pull and push..."
+                // Log in using the Docker Hub Access Token as the password
+                sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
+                
+                // Build the Docker Image
+                echo "Building Docker image: ${fullImageName}"
+                sh "docker build -t ${fullImageName} ."
+                
+                // Push to Docker Hub
+                echo "Pushing image tag ${IMAGE_TAG} to Docker Hub..."
+                sh "docker push ${fullImageName}"
+                
+                echo "Tagging and pushing 'latest'..."
+                sh "docker tag ${fullImageName} ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest"
+                sh "docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest"
+                
+                echo "Image pushed successfully to Docker Hub."
+                
+                // Logout for security
+                sh "docker logout"
             }
+        }
+    }
+    
+    stage('Deploy Container') {
+        script {
+            // Deploy stage pulls the newly pushed image from Docker Hub
+            def latestImage = "${DOCKER_HUB_USER}/${IMAGE_NAME}:latest"
+            echo "Deploying container by pulling from Docker Hub..."
+            // Use triple quotes for the multi-line shell script
+            sh """
+                # Stop and remove the old container instance
+                docker stop ${CONTAINER_NAME} || true
+                docker rm ${CONTAINER_NAME} || true
+                # Run the new container
+                docker run -d -p 5000:5000 --name ${CONTAINER_NAME} ${latestImage}
+                echo "Container ${CONTAINER_NAME} deployed and running on port 5000."
+            """
+        }
+    }
+} // End of node block
         }
         
         stage('Deploy Container') {
